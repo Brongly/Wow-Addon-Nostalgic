@@ -1,7 +1,9 @@
-## Interface: 120001
+## Interface: 120000
 ## Title: Nostalgic
-## Notes: The "Revert" build that opens the window.
+## Notes: A dynamic utility that displays every achievement earned on this specific day in World of Warcraft history.
 ## Author: Brongly
-## Version: 8.0
+## Version: 1.4.0
+## IconTexture: Interface\Icons\INV_Misc_Statue_01
+## SavedVariables: NostalgicPos
 
 Nostalgic.lua

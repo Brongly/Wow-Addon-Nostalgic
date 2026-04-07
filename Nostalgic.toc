@@ -1,9 +1,9 @@
 ## Interface: 120000
 ## Title: Nostalgic
-## Notes: Instant achievement history browser with offline caching.
+## Notes: Displays achievements earned on this day in history.
 ## Author: Brongly
-## Version: 1.6.5
-## IconTexture: Interface\\Icons\\INV_Misc_Statue_01
-## SavedVariables: NostalgicPos, NostalgicCache
+## Version: 1.8.9
+## IconTexture: Interface\Icons\INV_Misc_Statue_01
+## SavedVariables: NostalgicCache, NostalgicPos
 
 Nostalgic.lua

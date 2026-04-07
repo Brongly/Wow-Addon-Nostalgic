@@ -1,65 +1,95 @@
 local addonName, addonTable = ...
 
--- 1. Create the Main Window (Movable - Golden Build)
+-- 1. Persistent State
+local viewTime = time() 
+NostalgicCache = NostalgicCache or {}
+local isScanning = false
+
+-- 2. Create the Main Window
 local frame = CreateFrame("Frame", "NostalgicFrame", UIParent, "BasicFrameTemplateWithInset")
--- Default base size (We will update this dynamically)
-frame:SetSize(400, 300)
+frame:SetSize(400, 320)
 frame:SetPoint("CENTER")
 frame:SetMovable(true)
 frame:EnableMouse(true)
+frame:SetToplevel(true) -- Ensures window comes to front
 frame:RegisterForDrag("LeftButton")
 frame:Hide()
 
--- Register for Escape Key to Close
 tinsert(UISpecialFrames, "NostalgicFrame")
 
--- SAVING POSITION LOGIC
+-- Position Saving
 frame:SetScript("OnDragStart", frame.StartMoving)
 frame:SetScript("OnDragStop", function(self)
     self:StopMovingOrSizing()
-    -- Save the position when the user lets go
     local point, _, relativePoint, xOfs, yOfs = self:GetPoint()
     NostalgicPos = { point = point, rel = relativePoint, x = xOfs, y = yOfs }
 end)
 
--- LOADING POSITION LOGIC
-local loader = CreateFrame("Frame")
-loader:RegisterEvent("ADDON_LOADED")
-loader:SetScript("OnEvent", function(self, event, arg1)
-    if arg1 == addonName then
-        if NostalgicPos then
-            frame:ClearAllPoints()
-            frame:SetPoint(NostalgicPos.point, UIParent, NostalgicPos.rel, NostalgicPos.x, NostalgicPos.y)
-        end
-        self:UnregisterEvent("ADDON_LOADED")
-    end
-end)
-
 frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
 frame.title:SetPoint("CENTER", frame.TitleBg, "CENTER", 0, 0)
-frame.title:SetText("Nostalgic")
 
+-- 3. Navigation Buttons
+local buttonContainer = CreateFrame("Frame", nil, frame)
+buttonContainer:SetSize(380, 24)
+buttonContainer:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 10, 8)
+
+local prevBtn = CreateFrame("Button", nil, buttonContainer, "UIPanelButtonTemplate")
+prevBtn:SetSize(32, 22)
+prevBtn:SetPoint("LEFT", buttonContainer, "LEFT", 0, 0)
+prevBtn:SetText("<")
+prevBtn:SetScript("OnClick", function() viewTime = viewTime - 86400; ShowNostalgicUI() end)
+
+local nextBtn = CreateFrame("Button", nil, buttonContainer, "UIPanelButtonTemplate")
+nextBtn:SetSize(32, 22)
+nextBtn:SetPoint("RIGHT", buttonContainer, "RIGHT", 0, 0)
+nextBtn:SetText(">")
+nextBtn:SetScript("OnClick", function() viewTime = viewTime + 86400; ShowNostalgicUI() end)
+
+local todayBtn = CreateFrame("Button", nil, buttonContainer, "UIPanelButtonTemplate")
+todayBtn:SetSize(60, 22)
+todayBtn:SetPoint("CENTER", buttonContainer, "CENTER", 0, 0)
+todayBtn:SetText("Today")
+todayBtn:SetScript("OnClick", function() viewTime = time(); ShowNostalgicUI() end)
+
+-- Scroll Area
 local scrollFrame = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
-scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -30)
-scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -30, 10)
+scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -30) 
+scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -30, 35) 
 
 local content = CreateFrame("Frame", nil, scrollFrame)
-content:SetSize(1, 1) -- Width will be dynamic
+content:SetSize(300, 1) -- Width will be updated dynamically
 scrollFrame:SetScrollChild(content)
 
--- 2. Logic to scan achievements
-local function GetAchievementsForToday()
-    local today = date("*t")
-    local results = {}
-    local categories = GetCategoryList()
+-- 4. The Optimized Cache Engine
+local function RunInitialCache()
+    if next(NostalgicCache) or isScanning then return end
+    isScanning = true
     
+    local categories = GetCategoryList()
     for _, catID in ipairs(categories) do
-        local numAchievements = GetCategoryNumAchievements(catID)
-        for i = 1, numAchievements do
-            local id, name, _, completed, month, day, year = GetAchievementInfo(catID, i)
-            if completed and month == today.month and day == today.day then
-                local _, _, _, _, _, _, _, description = GetAchievementInfo(id)
-                table.insert(results, {id = id, year = year + 2000, name = name, desc = description})
+        local num = GetCategoryNumAchievements(catID)
+        for i = 1, num do
+            local id, _, _, completed, month, day, year = GetAchievementInfo(catID, i)
+            if completed and month and day then
+                NostalgicCache[catID] = NostalgicCache[catID] or {}
+                table.insert(NostalgicCache[catID], { id = id, m = month, d = day, y = year + 2000 })
+            end
+        end
+    end
+    isScanning = false
+    print("|cff00ff00Nostalgic: History Indexed. Instant browsing enabled.|r")
+end
+
+-- 5. Search & Display (The "Blink" Speed)
+local function GetAchievementsForTime(t)
+    local results = {}
+    local d = date("*t", t)
+    for catID, achList in pairs(NostalgicCache) do
+        for _, ach in ipairs(achList) do
+            if ach.m == d.month and ach.d == d.day then
+                -- Pull dynamic info for the UI
+                local _, name, _, _, _, _, _, description = GetAchievementInfo(ach.id)
+                table.insert(results, { id = ach.id, year = ach.y, name = name, desc = description })
             end
         end
     end
@@ -67,122 +97,109 @@ local function GetAchievementsForToday()
     return results
 end
 
--- 3. Show the UI with SMART AUTOSIZING
-local function ShowNostalgicUI()
-    local achievements = GetAchievementsForToday()
-    local yOffset = -5
+function ShowNostalgicUI()
+    frame.title:SetText("Nostalgic: " .. date("%B %d", viewTime))
+    local achievements = GetAchievementsForTime(viewTime)
+    
+    -- Clear previous rows
     local children = {content:GetChildren()}
-    for _, child in ipairs(children) do child:Hide() end
+    for _, child in ipairs(children) do child:Hide(); child:SetParent(nil) end
+
+    local yOffset = -5
+    local maxWidth = 320
 
     if #achievements > 0 then
-        -- NEW: Set an absolute MINIMUM width for the window (e.g., 280)
-        local maxWidth = 280
-
-        -- Create a temporary FontString using the same font to measure width
         local measurer = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        measurer:Hide() -- Keep it hidden
+        measurer:Hide()
 
         for _, ach in ipairs(achievements) do
+            -- Create row button
             local btn = CreateFrame("Button", nil, content)
-            btn:SetSize(350, 20) -- Width will update later
+            btn:SetHeight(20)
             btn:SetPoint("TOPLEFT", content, "TOPLEFT", 5, yOffset)
+            btn:EnableMouse(true)
+            btn:RegisterForClicks("LeftButtonUp")
+
             local link = GetAchievementLink(ach.id)
+            local fullText = string.format("|cffffd100[%d]|r %s", ach.year, link or ach.name)
             
-            -- Prepare the full display string: "[YYYY] Achievement Name"
-            local fullTextString = string.format("|cffffd100[%d]|r %s", ach.year, link or ach.name)
-            
-            -- Store the text data for the FontString (needed after width measurement)
             local text = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             text:SetPoint("LEFT", btn, "LEFT", 0, 0)
-            text:SetText(fullTextString)
-            btn.text = text -- Store reference for dynamic resizing
+            text:SetText(fullText)
 
-            -- AUTOSIZING WIDTH CALCULATION
-            -- Use the measurement FontString to find the pixel width of this specific achievement line
-            measurer:SetText(fullTextString)
-            local lineWidth = measurer:GetStringWidth()
-
-            -- We need to add padding for:
-            -- 1. Button inset: 5px left
-            -- 2. The scrollbar gap: 30px right
-            -- Total padding = ~35px. We'll add a little extra safety buffer.
-            local totalLineNeeded = lineWidth + 50 
-
-            -- If this line is the longest one so far, update maxWidth
-            if totalLineNeeded > maxWidth then
-                maxWidth = totalLineNeeded
-            end
+            -- Measure for Autosizing
+            measurer:SetText(fullText)
+            local w = measurer:GetStringWidth() + 50
+            if w > maxWidth then maxWidth = w end
             
-            -- Define Interactivity (Links & Tooltips)
+            -- *** INTERACTIVITY RESTORED ***
             btn:SetScript("OnClick", function()
-                if IsShiftKeyDown() then ChatEdit_InsertLink(link)
+                if IsShiftKeyDown() then 
+                    ChatEdit_InsertLink(link)
                 else
                     if not AchievementFrame then AchievementFrame_LoadUI() end
                     ShowUIPanel(AchievementFrame)
                     AchievementFrame_SelectAchievement(ach.id)
                 end
             end)
+
             btn:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 GameTooltip:SetText(ach.name, 1, 1, 1)
                 GameTooltip:AddLine(ach.desc, 1, 0.82, 0, true)
                 GameTooltip:Show()
             end)
-            btn:SetScript("OnLeave", GameTooltip_Hide)
+
+            btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+            btn:SetWidth(maxWidth) -- Initial guess
             yOffset = yOffset - 22
         end
 
-        -- FINALIZE AUTOSIZE WIDTH
-        -- 1. Ensure a sane MAXIMUM width (e.g., 800) so it doesn't span across the screen.
-        if maxWidth > 800 then maxWidth = 800 end
-
-        -- 2. Now that we know the maxWidth for this entire day, apply it to the main frames
-        frame:SetWidth(maxWidth)
-        content:SetWidth(maxWidth - 20) -- Account for ScrollFrame margin
-
-        -- 3. Also update the width of all the buttons we just made to match the window
-        -- (Iterate through children and find the buttons)
-        local finalWidthBuffer = maxWidth - 40 -- Account for scrollbar/padding
-        for _, achFrame in ipairs({content:GetChildren()}) do
-            if achFrame:GetObjectType() == "Button" then
-                achFrame:SetWidth(finalWidthBuffer)
+        -- Final Window Scaling
+        frame:SetWidth(math.min(maxWidth, 800))
+        content:SetWidth(frame:GetWidth() - 20) 
+        buttonContainer:SetWidth(frame:GetWidth() - 20)
+        
+        -- Update all rows to full width
+        local finalChildren = {content:GetChildren()}
+        for _, child in ipairs(finalChildren) do
+            if child:IsObjectType("Button") then
+                child:SetWidth(frame:GetWidth() - 30)
             end
         end
-
     else
-        -- Default width if no achievements are found
         frame:SetWidth(400)
+        buttonContainer:SetWidth(380)
         local text = content:CreateFontString(nil, "OVERLAY", "GameFontDisable")
         text:SetPoint("TOPLEFT", content, "TOPLEFT", 5, yOffset)
-        text:SetText("No achievements found for today.")
+        text:SetText("No history found for " .. date("%B %d", viewTime))
+        yOffset = yOffset - 22
     end
-    
+
     content:SetHeight(math.abs(yOffset) + 20)
     frame:Show()
 end
 
--- 4. TITAN PANEL / LDB INTEGRATION
-local LDB = LibStub and LibStub:GetLibrary("LibDataBroker-1.1", true)
-if LDB then
-    LDB:NewDataObject("Nostalgic", {
-        type = "launcher",
-        text = "Nostalgic",
-        icon = "Interface\\Icons\\INV_Misc_Statue_01",
-        OnClick = function(self, button)
-            if frame:IsShown() then frame:Hide() else ShowNostalgicUI() end
-        end,
-        OnTooltipShow = function(tooltip)
-            tooltip:AddLine("Nostalgic")
-            tooltip:AddLine("|cffffffffClick to see today's history.|r")
-        end,
-    })
-end
+-- 6. Initialization
+local loader = CreateFrame("Frame")
+loader:RegisterEvent("ADDON_LOADED")
+loader:RegisterEvent("PLAYER_ENTERING_WORLD")
+loader:SetScript("OnEvent", function(self, event, arg1)
+    if event == "ADDON_LOADED" and arg1 == addonName then
+        if NostalgicPos then
+            frame:ClearAllPoints()
+            frame:SetPoint(NostalgicPos.point, UIParent, NostalgicPos.rel, NostalgicPos.x, NostalgicPos.y)
+        end
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        C_Timer.After(3, RunInitialCache)
+    end
+end)
 
--- 5. SLASH COMMANDS
 _G["SLASH_NOS1"] = "/nos"
-_G["SLASH_NOS2"] = "/nostalgic"
 SlashCmdList["NOS"] = function()
-    if frame:IsShown() then frame:Hide() else ShowNostalgicUI() end
+    if frame:IsShown() then frame:Hide() else 
+        viewTime = time()
+        ShowNostalgicUI() 
+    end
 end
-
-print("|cff00ff00Nostalgic v1.4.0 Loaded!|r Type /nos or check Titan Panel.")

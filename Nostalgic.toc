@@ -1,9 +1,9 @@
 ## Interface: 120000
 ## Title: Nostalgic
-## Notes: A dynamic utility that displays every achievement earned on this specific day in World of Warcraft history.
+## Notes: Instant achievement history browser with offline caching.
 ## Author: Brongly
-## Version: 1.4.0
-## IconTexture: Interface\Icons\INV_Misc_Statue_01
-## SavedVariables: NostalgicPos
+## Version: 1.6.5
+## IconTexture: Interface\\Icons\\INV_Misc_Statue_01
+## SavedVariables: NostalgicPos, NostalgicCache
 
 Nostalgic.lua

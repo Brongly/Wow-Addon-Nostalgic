@@ -2,7 +2,7 @@
 ## Title: Nostalgic
 ## Notes: Displays achievements earned on this day in history.
 ## Author: Brongly
-## Version: 1.8.9
+## Version: 1.9.0
 ## IconTexture: Interface\Icons\INV_Misc_Statue_01
 ## SavedVariables: NostalgicCache, NostalgicPos
 
